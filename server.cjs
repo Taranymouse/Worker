@@ -1,5 +1,5 @@
 const express = require('express');
-const line = require('@line/bot-sdk').messagingApi; 
+const line = require('@line/bot-sdk').messagingApi;
 const lineMiddleware = require('@line/bot-sdk').middleware;
 const axios = require('axios');
 
@@ -20,31 +20,55 @@ async function handleEvent(event) {
   if (userText.toLowerCase() === 'summary') {
     try {
       const response = await axios.get(process.env.GOOGLE_SHEET_URL);
-      const rows = response.data;
+      const rows = response.data; // [date, subject, description, status]
+
       if (rows.length > 0) {
-        replyText = "📊 สรุปงานทั้งหมด:\n\n";
-        rows.forEach((row, i) => {
-          replyText += `${i+1}. [${row[0]}] ${row[1]}\n`;
+        const groupedTasks = {};
+        rows.forEach(row => {
+          const [date, subject, desc] = row;
+          if (!groupedTasks[date]) groupedTasks[date] = [];
+          groupedTasks[date].push({ subject, desc });
         });
+
+        const now = new Date();
+        replyText = `📊 สรุปงานทั้งหมด ประจำเดือน ${now.getMonth() + 1} / ${now.getFullYear() + 543}:\n\n`;
+
+        let count = 1;
+        for (const date in groupedTasks) {
+          replyText += `${count}. [${date}]\n`;
+          groupedTasks[date].forEach(item => {
+            replyText += `    - ${item.subject}\n`;
+            if (item.desc && item.desc !== "-") replyText += `        > ${item.desc}\n`;
+          });
+          replyText += `\n`;
+          count++;
+        }
       } else {
-        replyText = "📁 ยังไม่มีข้อมูลการบันทึกงาน";
+        replyText = "📁 ยังไม่มีข้อมูลการบันทึกงานครับ";
       }
-    } catch (e) { replyText = "❌ ไม่สามารถดึงข้อมูลได้"; }
+    } catch (e) { replyText = "❌ ดึงข้อมูลไม่สำเร็จ"; }
   } else {
-    // แยกชื่องาน และ วันที่ (ถ้ามี)
-    const regex = /(.+?)(?:\s#(\d{2}\/\d{2}\/\d{4}))?$/;
+    // Regex แยก Subject | Description #Date
+    const regex = /^([^|#]+)(?:\|([^#]+))?(?:\s#(\d{2}\/\d{2}\/\d{4}))?$/;
     const match = userText.match(regex);
 
     if (match) {
-      const title = match[1].trim();
+      const subject = match[1].trim();
+      const description = match[2] ? match[2].trim() : "";
       const now = new Date();
       const today = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-      const finalDate = match[2] || today;
+      const finalDate = match[3] || today;
 
       try {
-        await axios.post(process.env.GOOGLE_SHEET_URL, { title, date: finalDate });
-        replyText = `✅ บันทึกสำเร็จ!\n📝: ${title}\n📅: ${finalDate}\nแยกแผ่นงานให้แล้วครับ`;
+        await axios.post(process.env.GOOGLE_SHEET_URL, { 
+          subject, 
+          description, 
+          date: finalDate 
+        });
+        replyText = `✅ บันทึกงานเรียบร้อย!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}`;
       } catch (e) { replyText = "❌ บันทึกลง Sheet ไม่สำเร็จ"; }
+    } else {
+      replyText = "🤖 รูปแบบ: หัวข้อ | รายละเอียด #วันที่\nตัวอย่าง: ประชุม SAP | คุยเรื่องงบ #09/04/2026";
     }
   }
 
