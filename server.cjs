@@ -1,15 +1,19 @@
 const express = require('express');
-const line = require('@line/bot-sdk');
+const line = require('@line/bot-sdk').messagingApi; 
+const lineMiddleware = require('@line/bot-sdk').middleware;
 
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_SECRET
 };
 
-const client = new line.Client(config);
+const client = new line.MessagingApiClient({
+  channelAccessToken: config.channelAccessToken
+});
+
 const app = express();
 
-app.post('/webhook', line.middleware(config), (req, res) => {
+app.post('/webhook', lineMiddleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
     .then((result) => res.json(result))
     .catch((err) => {
@@ -41,9 +45,13 @@ async function handleEvent(event) {
     replyText = `🤖 สวัสดีครับ! ผมคือบอท Worker\n\nหากต้องการบันทึกงาน กรุณาพิมพ์ในรูปแบบ:\nชื่องาน #วัน/เดือน/ปี\n\nตัวอย่าง: ประชุมงาน #15/04/2026`;
   }
 
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: replyText
+  // แก้ส่วนการส่งข้อความตอบกลับครับ
+  return client.replyMessage({
+    replyToken: event.replyToken,
+    messages: [{
+      type: 'text',
+      text: replyText
+    }]
   });
 }
 
