@@ -1,61 +1,62 @@
 const express = require('express');
 const line = require('@line/bot-sdk').messagingApi; 
 const lineMiddleware = require('@line/bot-sdk').middleware;
+const axios = require('axios');
 
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_SECRET
 };
 
-const client = new line.MessagingApiClient({
-  channelAccessToken: config.channelAccessToken
-});
-
+const client = new line.MessagingApiClient({ channelAccessToken: config.channelAccessToken });
 const app = express();
 
-app.post('/webhook', lineMiddleware(config), (req, res) => {
-  Promise.all(req.body.events.map(handleEvent))
-    .then((result) => res.json(result))
-    .catch((err) => {
-      console.error(err);
-      res.status(500).end();
-    });
-});
-
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return Promise.resolve(null);
-  }
+  if (event.type !== 'message' || event.message.type !== 'text') return null;
 
-  const userText = event.message.text;
-  console.log('ได้รับข้อความ:', userText);
-
-  // รูปแบบคำสั่ง: "ชื่องาน #วว/ดด/ปปปป"
-  // ตัวอย่าง: "ทำรีพอร์ท SAP #12/04/2026"
-  const regex = /(.+)\s#(\d{2}\/\d{2}\/\d{4})/;
-  const match = userText.match(regex);
-
+  const userText = event.message.text.trim();
   let replyText = '';
 
-  if (match) {
-    const title = match[1].trim();
-    const date = match[2];
-    replyText = `✅ บันทึกงาน: ${title}\n📅 วันที่: ${date}\nลงในระบบ Worker เรียบร้อยแล้ว!`;
+  if (userText.toLowerCase() === 'summary') {
+    try {
+      const response = await axios.get(process.env.GOOGLE_SHEET_URL);
+      const rows = response.data;
+      if (rows.length > 0) {
+        replyText = "📊 สรุปงานทั้งหมด:\n\n";
+        rows.forEach((row, i) => {
+          replyText += `${i+1}. [${row[0]}] ${row[1]}\n`;
+        });
+      } else {
+        replyText = "📁 ยังไม่มีข้อมูลการบันทึกงาน";
+      }
+    } catch (e) { replyText = "❌ ไม่สามารถดึงข้อมูลได้"; }
   } else {
-    replyText = `🤖 สวัสดีครับ! ผมคือบอท Worker\n\nหากต้องการบันทึกงาน กรุณาพิมพ์ในรูปแบบ:\nชื่องาน #วัน/เดือน/ปี\n\nตัวอย่าง: ประชุมงาน #15/04/2026`;
+    // แยกชื่องาน และ วันที่ (ถ้ามี)
+    const regex = /(.+?)(?:\s#(\d{2}\/\d{2}\/\d{4}))?$/;
+    const match = userText.match(regex);
+
+    if (match) {
+      const title = match[1].trim();
+      const now = new Date();
+      const today = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+      const finalDate = match[2] || today;
+
+      try {
+        await axios.post(process.env.GOOGLE_SHEET_URL, { title, date: finalDate });
+        replyText = `✅ บันทึกสำเร็จ!\n📝: ${title}\n📅: ${finalDate}\nแยกแผ่นงานให้แล้วครับ`;
+      } catch (e) { replyText = "❌ บันทึกลง Sheet ไม่สำเร็จ"; }
+    }
   }
 
-  // แก้ส่วนการส่งข้อความตอบกลับครับ
   return client.replyMessage({
     replyToken: event.replyToken,
-    messages: [{
-      type: 'text',
-      text: replyText
-    }]
+    messages: [{ type: 'text', text: replyText }]
   });
 }
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+app.post('/webhook', lineMiddleware(config), (req, res) => {
+  Promise.all(req.body.events.map(handleEvent)).then((result) => res.json(result));
 });
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Server running on port ${port}`));
