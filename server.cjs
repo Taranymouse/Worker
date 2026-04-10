@@ -38,15 +38,24 @@ async function handleEvent(event) {
         const currentY = String(now.getFullYear());
 
         rows.forEach(row => {
-          let [dateStr, type, subject, desc] = row;
-          const parts = String(dateStr).split('/');
+          let [dateValue, type, subject, desc] = row;
+          
+          // แปลงให้เป็น String และกำจัดช่องว่างที่อาจติดมา!!
+          const dateStr = String(dateValue).trim(); 
+          
+          // รองรับทั้งแบบ 10/04/2026 และ 10 / 04 / 2026
+          const parts = dateStr.split('/').map(p => p.trim());
           
           if (parts.length === 3) {
             const d = parts[0].padStart(2, '0');
             const m = parts[1].padStart(2, '0');
-            const y = parts[2];
+            const y = parts[2]; // 2026
+            
+            const now = new Date();
+            // ดึงเดือน/ปีปัจจุบันมาเทียบ
+            const currentM = String(now.getMonth() + 1).padStart(2, '0');
+            const currentY = String(now.getFullYear());
 
-            // กรองเอาเฉพาะเดือนปัจจุบัน [cite: 10]
             if (m === currentM && y === currentY) {
               const formattedDate = `${d} / ${m} / ${y.slice(-2)}`;
               if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
