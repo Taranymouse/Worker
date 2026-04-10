@@ -119,8 +119,8 @@ async function handleEvent(event) {
           description, 
           date: finalDate 
         });
-        replyText = `Oi! ไอน้อง พี่จดไว้ให้ละ \n✅ บันทึก${isLeave ? 'วันลา' : 'งาน'}เรียบร้อย!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}\nจัดปายไอน้อง~~~`;
-      } catch (e) { replyText = "❌ บันทึกไม่สำเร็จ"; }
+        replyText = `Oi! ไอน้อง พี่จด${isLeave ? 'วันลา' : 'งาน'}ไว้ให้ละเรียบร้อย! \n📌 เรื่อง: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}\nจัดปายไอน้อง~~~`;
+      } catch (e) { replyText = "❌ บันทึกไม่ได้โว้ย !!"; }
     } else {
       replyText = "🤖 รูปแบบ: หัวข้อ | รายละเอียด #วันที่\n\n💡 ตัวอย่างบันทึกงาน:\nประชุม SAP | คุยเรื่องงบ\n\n💡 ตัวอย่างบันทึกวันลา:\nลากิจ | ไปทำธุระที่อำเภอ #15/04/2026";
     }
