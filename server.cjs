@@ -15,7 +15,7 @@ const app = express();
 async function notifySystemStatus(status) {
   try {
     await client.broadcast({
-      messages: [{ type: 'text', text: `📢 แจ้งเตือน: ระบบ WORKER ${status}` }]
+      messages: [{ type: 'text', text: `เห้ยย!! ตอนนี้ ${status}` }]
     });
   } catch (err) { console.error('Notify error:', err); }
 }
@@ -34,50 +34,54 @@ async function handleEvent(event) {
 
       if (rows.length > 0) {
         const groupedTasks = {};
-        
+        const now = new Date();
+        const currentMonth = now.getMonth(); // 0-11
+        const currentYear = now.getFullYear();
+
         rows.forEach(row => {
           let [rawDate, type, subject, desc] = row;
+          const d = new Date(rawDate);
           
-          // --- ส่วนแก้ไขวันที่ให้สวยงาม ---
-          let formattedDate = rawDate;
-          
-          // ตรวจสอบว่าถ้าวันที่เป็นรูปแบบ ISO (มีตัว T) หรือเป็น Object วันที่
-          if (rawDate && (rawDate.toString().includes('T') || !isNaN(Date.parse(rawDate)))) {
-            const d = new Date(rawDate);
-            // ปรับให้เป็นรูปแบบ วว/ดด/ปปปป
-            formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-          }
+          // กรองให้แสดงเฉพาะเดือนปัจจุบันและปีปัจจุบันเท่านั้น
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+            // จัดรูปแบบเป็น dd / mm / yy (เอาแค่ 2 หลักท้ายของปี)
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = String(d.getFullYear()).slice(-2);
+            const formattedDate = `${day} / ${month} / ${year}`;
 
-          if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
-          groupedTasks[formattedDate].push({ type, subject, desc });
+            if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
+            groupedTasks[formattedDate].push({ type, subject, desc });
+          }
         });
 
-        const now = new Date();
-        const thMonth = now.getMonth() + 1;
-        const thYear = now.getFullYear() + 543;
+        const thMonth = currentMonth + 1;
+        const thYear = currentYear + 543;
 
         replyText = `📊 สรุปงานทั้งหมด ประจำเดือน ${thMonth} / ${thYear}:\n\n`;
 
-        let count = 1;
-        // เรียงลำดับวันที่ (จากน้อยไปมาก)
         const sortedDates = Object.keys(groupedTasks).sort((a, b) => {
-           const dateA = a.split('/').reverse().join('');
-           const dateB = b.split('/').reverse().join('');
-           return dateA.localeCompare(dateB);
+           // เรียงตามวันที่ในเดือนเดียวกัน
+           return a.localeCompare(b);
         });
 
-        for (const date of sortedDates) {
-          replyText += `${count}. [${date}]\n`;
-          groupedTasks[date].forEach(item => {
-            const icon = item.type === 'Leave' ? '🚩 [ลา]' : '🔹';
-            replyText += `    ${icon} ${item.subject}\n`;
-            if (item.desc && item.desc !== "-") replyText += `        > ${item.desc}\n`;
-          });
-          replyText += `\n`;
-          count++;
+        if (sortedDates.length > 0) {
+          let count = 1;
+          for (const date of sortedDates) {
+            replyText += `${count}. [${date}]\n`;
+            groupedTasks[date].forEach(item => {
+              const icon = item.type === 'Leave' ? '🚩 [ลา]' : '🔹';
+              replyText += `    ${icon} ${item.subject}\n`;
+              if (item.desc && item.desc !== "-") replyText += `        > ${item.desc}\n`;
+            });
+            replyText += `\n`;
+            count++;
+          }
+        } else {
+          replyText += "📁 ยังไม่มีข้อมูลโว้ย หาไม่เจอ!";
         }
-      } else { replyText = "📁 ยังไม่มีข้อมูลบันทึกครับ"; }
-    } catch (e) { replyText = "❌ ดึงข้อมูลไม่สำเร็จ"; }
+      } else { replyText = "📁 แกบันทึกข้อมูลยัง!? ห๊า"; }
+    } catch (e) { replyText = "❌ นะ นะ นะ นานี๊!!??"; }
   }
   
   // 2. ระบบบันทึก (Work/Leave)
@@ -103,7 +107,7 @@ async function handleEvent(event) {
           description, 
           date: finalDate 
         });
-        replyText = `✅ บันทึก${isLeave ? 'วันลา' : 'งาน'}สำเร็จ!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}`;
+        replyText = `Oi! ไอน้อง พี่จดไว้ให้ละ \n✅บันทึก${isLeave ? 'วันลา' : 'งาน'}สำเร็จ!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}`;
       } catch (e) { replyText = "❌ บันทึกไม่สำเร็จ"; }
     } else {
       replyText = "🤖 รูปแบบ: หัวข้อ | รายละเอียด #วันที่\n\n💡 ตัวอย่างบันทึกงาน:\nประชุม SAP | คุยเรื่องงบ\n\n💡 ตัวอย่างบันทึกวันลา:\nลากิจ | ไปทำธุระที่อำเภอ #15/04/2026";
@@ -121,11 +125,11 @@ app.post('/webhook', lineMiddleware(config), (req, res) => {
 });
 
 // ดักจับสัญญาณปิด/เปิด
-process.on('SIGTERM', async () => { await notifySystemStatus('กำลังปิดตัวลง (Sleep)'); process.exit(0); });
-process.on('SIGINT', async () => { await notifySystemStatus('หยุดทำงาน (Manual Stop)'); process.exit(0); });
+process.on('SIGTERM', async () => { await notifySystemStatus('ขอพักสักแปป..'); process.exit(0); });
+process.on('SIGINT', async () => { await notifySystemStatus('ใครจะอยู่ก็อยู่ ไกปูวว'); process.exit(0); });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-  notifySystemStatus('พร้อมใช้งานแล้ว (Online)');
+  notifySystemStatus('มาเว้ยย!! เลสโก้ววว');
 });
