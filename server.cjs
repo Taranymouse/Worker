@@ -30,21 +30,43 @@ async function handleEvent(event) {
   if (userText.toLowerCase() === 'summary') {
     try {
       const response = await axios.get(process.env.GOOGLE_SHEET_URL);
-      const rows = response.data; // [date, type, subject, desc]
+      const rows = response.data; 
 
       if (rows.length > 0) {
         const groupedTasks = {};
+        
         rows.forEach(row => {
-          const [date, type, subject, desc] = row;
-          if (!groupedTasks[date]) groupedTasks[date] = [];
-          groupedTasks[date].push({ type, subject, desc });
+          let [rawDate, type, subject, desc] = row;
+          
+          // --- ส่วนแก้ไขวันที่ให้สวยงาม ---
+          let formattedDate = rawDate;
+          
+          // ตรวจสอบว่าถ้าวันที่เป็นรูปแบบ ISO (มีตัว T) หรือเป็น Object วันที่
+          if (rawDate && (rawDate.toString().includes('T') || !isNaN(Date.parse(rawDate)))) {
+            const d = new Date(rawDate);
+            // ปรับให้เป็นรูปแบบ วว/ดด/ปปปป
+            formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+          }
+
+          if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
+          groupedTasks[formattedDate].push({ type, subject, desc });
         });
 
         const now = new Date();
-        replyText = `📊 สรุปรายงานประจำเดือน ${now.getMonth() + 1} / ${now.getFullYear() + 543}:\n\n`;
+        const thMonth = now.getMonth() + 1;
+        const thYear = now.getFullYear() + 543;
+
+        replyText = `📊 สรุปงานทั้งหมด ประจำเดือน ${thMonth} / ${thYear}:\n\n`;
 
         let count = 1;
-        for (const date in groupedTasks) {
+        // เรียงลำดับวันที่ (จากน้อยไปมาก)
+        const sortedDates = Object.keys(groupedTasks).sort((a, b) => {
+           const dateA = a.split('/').reverse().join('');
+           const dateB = b.split('/').reverse().join('');
+           return dateA.localeCompare(dateB);
+        });
+
+        for (const date of sortedDates) {
           replyText += `${count}. [${date}]\n`;
           groupedTasks[date].forEach(item => {
             const icon = item.type === 'Leave' ? '🚩 [ลา]' : '🔹';
@@ -56,7 +78,7 @@ async function handleEvent(event) {
         }
       } else { replyText = "📁 ยังไม่มีข้อมูลบันทึกครับ"; }
     } catch (e) { replyText = "❌ ดึงข้อมูลไม่สำเร็จ"; }
-  } 
+  }
   
   // 2. ระบบบันทึก (Work/Leave)
   else {
