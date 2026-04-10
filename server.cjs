@@ -40,25 +40,37 @@ async function handleEvent(event) {
 
         rows.forEach(row => {
           let [rawDate, type, subject, desc] = row;
-          const d = new Date(rawDate);
           
-          // กรองให้แสดงเฉพาะเดือนปัจจุบันและปีปัจจุบันเท่านั้น
-          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-            // จัดรูปแบบเป็น dd / mm / yy (เอาแค่ 2 หลักท้ายของปี)
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = String(d.getFullYear()).slice(-2);
-            const formattedDate = `${day} / ${month} / ${year}`;
+          // แปลง rawDate จาก Sheet ให้เป็น String เสมอ
+          const dateStr = String(rawDate); 
+          
+          // ดึงค่า วัน/เดือน/ปี จาก String (รูปแบบ 10/04/2026)
+          const parts = dateStr.split('/');
+          
+          if (parts.length === 3) {
+            const d = parts[0].padStart(2, '0');
+            const m = parts[1].padStart(2, '0');
+            const y = parts[2]; // 2026
+            
+            const now = new Date();
+            const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+            const currentYear = String(now.getFullYear());
 
-            if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
-            groupedTasks[formattedDate].push({ type, subject, desc });
+            // ตรวจสอบว่า เดือน และ ปี ตรงกับปัจจุบันหรือไม่ 
+            if (m === currentMonth && y === currentYear) {
+              // จัดรูปแบบเป็น dd / mm / yy ตามที่คุณต้องการ [cite: 9]
+              const formattedDate = `${d} / ${m} / ${y.slice(-2)}`;
+
+              if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
+              groupedTasks[formattedDate].push({ type, subject, desc });
+            }
           }
         });
 
         const thMonth = currentMonth + 1;
         const thYear = currentYear + 543;
 
-        replyText = `📊 สรุปงานทั้งหมด ประจำเดือน ${thMonth} / ${thYear}:\n\n`;
+        replyText = `เอ้อออ มา!! เอาไปดู\n📊 สรุปงานทั้งหมด ประจำเดือน ${thMonth} / ${thYear}:\n\n`;
 
         const sortedDates = Object.keys(groupedTasks).sort((a, b) => {
            // เรียงตามวันที่ในเดือนเดียวกัน
@@ -107,7 +119,7 @@ async function handleEvent(event) {
           description, 
           date: finalDate 
         });
-        replyText = `Oi! ไอน้อง พี่จดไว้ให้ละ \n✅บันทึก${isLeave ? 'วันลา' : 'งาน'}สำเร็จ!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}`;
+        replyText = `Oi! ไอน้อง พี่จดไว้ให้ละ \n✅ บันทึก${isLeave ? 'วันลา' : 'งาน'}เรียบร้อย!\n📌 หัวข้อ: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}\nจัดปายไอน้อง~~~`;
       } catch (e) { replyText = "❌ บันทึกไม่สำเร็จ"; }
     } else {
       replyText = "🤖 รูปแบบ: หัวข้อ | รายละเอียด #วันที่\n\n💡 ตัวอย่างบันทึกงาน:\nประชุม SAP | คุยเรื่องงบ\n\n💡 ตัวอย่างบันทึกวันลา:\nลากิจ | ไปทำธุระที่อำเภอ #15/04/2026";
@@ -131,5 +143,5 @@ process.on('SIGINT', async () => { await notifySystemStatus('ใครจะอ�
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-  notifySystemStatus('มาเว้ยย!! เลสโก้ววว');
+  notifySystemStatus('มาเว้ยย เลสโก้ววว!!');
 });
