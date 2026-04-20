@@ -1,23 +1,25 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import TimeSheet from './components/Timesheet.vue'
 import WorkTodo from './components/WorkTodo.vue'
 
+// สร้าง Reference เพื่อเข้าถึงฟังก์ชันภายใน Timesheet.vue
 const timesheetRef = ref(null)
 const todayStr = new Date().toLocaleDateString('en-CA')
 
-// ฟังก์ชันส่งงานไปลงปฏิทิน
-const handleSendToTimesheet = (todoItem) => {
+// ฟังก์ชันเมื่อกดปุ่ม "ส่งไปปฏิทิน" ใน WorkTodo
+const handleSendToTimesheet = async (todoItem) => {
   if (timesheetRef.value) {
-    timesheetRef.value.addExternalTask({
+    // เรียกใช้ฟังก์ชัน addExternalTask ที่เรา defineExpose ไว้ใน Timesheet
+    await timesheetRef.value.addExternalTask({
       title: todoItem.title,
-      date: todoItem.date,
-      description: todoItem.description
+      date: todoItem.deadline || todayStr, // ถ้าไม่มี Deadline ให้ใช้วันนี้
+      description: todoItem.description || ''
     })
   }
 }
 
-// ฟังก์ชันส่งรายการ Deadline ไปแสดงจุดบนปฏิทิน
+// ฟังก์ชันแสดงจุด Deadline สีแดงบนปฏิทินแบบ Real-time
 const handleListUpdated = (newList) => {
   if (timesheetRef.value) {
     timesheetRef.value.updateDeadlines(newList)
@@ -38,16 +40,12 @@ const handleListUpdated = (newList) => {
 
       <WorkTodo 
         :todayStr="todayStr" 
-        @sendToTimesheet="handleSendToTimesheet" 
+        @sendToTimesheet="handleSendToTimesheet"
         @listUpdated="handleListUpdated"
       />
-      
-      <div class="mt-auto pt-6 text-center">
-        <p class="text-[10px] font-black text-slate-300 uppercase tracking-widest">© 2026 My Work Schedule</p>
-      </div>
     </aside>
 
-    <main class="flex-1 h-screen overflow-y-auto bg-slate-50/50">
+    <main class="flex-1 h-screen overflow-y-auto bg-slate-50/50 p-4 lg:p-10">
       <TimeSheet ref="timesheetRef" />
     </main>
 
