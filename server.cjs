@@ -17,7 +17,7 @@ const userState = {};
 async function notifySystemStatus(status) {
   try {
     await client.broadcast({
-      messages: [{ type: 'text', text: `เห้ย!! ฟังให้ดี.. ระบบมัน ${status} แล้วนะเฟ้ย!!` }]
+      messages: [{ type: 'text', text: `เห้ย!! ฟังให้ดี.. ระบบมัน ${status}` }]
     });
   } catch (err) { console.error('Notify error:', err); }
 }
