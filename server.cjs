@@ -11,137 +11,128 @@ const config = {
 const client = new line.MessagingApiClient({ channelAccessToken: config.channelAccessToken });
 const app = express();
 
-// --- ฟังก์ชันแจ้งเตือนระบบ (สไตล์นักเลง) --- [cite: 3, 4]
-async function notifySystemStatus(status) {
-  try {
-    await client.broadcast({
-      messages: [{ type: 'text', text: `เห้ย!! ฟังให้ดี.. ระบบมัน ${status} แล้วนะเฟ้ย!!` }]
-    });
-  } catch (err) { console.error('Notify error:', err); }
-}
+// เก็บสถานะการพิมพ์ของผู้ใช้
+const userState = {};
 
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
+
+  const userId = event.source.userId;
   const userText = event.message.text.trim();
   let replyText = '';
 
-  // 1. คำสั่ง Summary (รวมพลเช็คบิล) [cite: 5, 6]
-  if (userText.toLowerCase() === 'summary') {
+  // --- 1. ระบบยกเลิก (Cancel) ---
+  if (userText === 'ยกเลิก' || userText.toLowerCase() === 'cancel') {
+    if (userState[userId]) {
+      delete userState[userId];
+      return client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: 'โอเคไอน้อง! ยกเลิกให้ละ มีอะไรก็ว่ามาใหม่!!' }]
+      });
+    }
+    return null;
+  }
+
+  // --- 2. เช็คว่าอยู่ในสถานะรอคำตอบหรือไม่ (Conversational State) ---
+  if (userState[userId] && !userText.includes('|')) {
+    const state = userState[userId];
+    const subject = userText;
+    const now = new Date();
+    const today = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    
     try {
-      const response = await axios.get(process.env.GOOGLE_SHEET_URL);
-      const rows = response.data; // ตอนนี้จะได้ [ {rowId, sheetName, date, type, subject, desc}, ... ] [cite: 6]
-
-      if (rows && rows.length > 0) {
-        const groupedTasks = {};
-        const now = new Date();
-        const currentM = String(now.getMonth() + 1).padStart(2, '0');
-        const currentY = String(now.getFullYear());
-
-        rows.forEach(item => {
-          // ดึงค่าจาก Object ที่ส่งมาจาก GAS ตัวใหม่ [cite: 8]
-          const dateStr = String(item.date).trim();
-          const parts = dateStr.split('/').map(p => p.trim());
-          
-          if (parts.length === 3) {
-            const d = parts[0].padStart(2, '0');
-            const m = parts[1].padStart(2, '0');
-            const y = parts[2];
-
-            // กรองเอาเฉพาะเดือนปัจจุบัน [cite: 10]
-            if (m === currentM && y === currentY) {
-              const formattedDate = `${d} / ${m} / ${y.slice(-2)}`;
-              if (!groupedTasks[formattedDate]) groupedTasks[formattedDate] = [];
-              groupedTasks[formattedDate].push(item);
-            }
-          }
-        });
-
-        const thMonth = parseInt(currentM);
-        const thYear = parseInt(currentY) + 543;
-
-        replyText = `เอ้ออออ!! บัญชีหนังหมามาแล้ว!!\n📊 สรุปวีรกรรมประจำเดือน ${thMonth} / ${thYear}:\n\n`;
-
-        const sortedDates = Object.keys(groupedTasks).sort();
-
-        if (sortedDates.length > 0) {
-          let count = 1;
-          for (const date of sortedDates) {
-            replyText += `${count}. [${date}]\n`;
-            groupedTasks[date].forEach(task => {
-              const icon = task.type === 'Leave' ? '🚩 [หนีเที่ยว]' : '🔥';
-              replyText += `    ${icon} ${task.subject}\n`;
-              if (task.description && task.description !== "-") {
-                replyText += `        > ${task.description}\n`;
-              }
-            });
-            replyText += `\n`;
-            count++;
-          }
-          replyText += `จบแค่นี้แหละเฟ้ย! แยกย้าย!!`;
-        } else {
-          replyText = "📁 เดือนนี้ยังไม่มีวีรกรรมอะไรเลยเรอะ!? กระจอกจริง!!";
-        }
-      } else {
-        replyText = "📁 โล่งโจ้ง!! แกยังไม่เคยบันทึกอะไรเลยสินะ ห๊าา!?";
-      }
+      await axios.post(process.env.GOOGLE_SHEET_URL, { 
+        type: state.type, 
+        subject: subject, 
+        description: "-", 
+        date: today 
+      });
+      
+      delete userState[userId]; // บันทึกเสร็จแล้วเคลียร์สถานะ
+      replyText = `เรียบร้อย! พี่จด "${state.label}" เรื่อง: ${subject} ให้แล้วนะเฟ้ย!!\nจัดไปไอน้อง~~~`;
     } catch (e) {
-      console.error(e);
-      replyText = "❌ นะ นะ นะ นานี๊!!?? ระบบพังเฉยเลยโว้ยย!!";
+      replyText = "❌ บันทึกไม่ได้โว้ย!! ระบบมันมีปัญหา!!";
     }
   } 
-  
-  // 2. ระบบบันทึกงานและวันลา (Work/Leave) [cite: 21, 22]
-  else {
-    const regex = /^([^|#]+)(?:\|([^#]+))?(?:\s#(\d{2}\/\d{2}\/\d{4}))?$/;
-    const match = userText.match(regex);
 
+  // --- 3. คำสั่ง Summary ---
+  else if (userText.toLowerCase() === 'summary') {
+    try {
+      const response = await axios.get(process.env.GOOGLE_SHEET_URL);
+      const rows = response.data; 
+
+      if (rows.length > 0) {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const filteredRows = rows.filter(row => {
+          if (!row.date) return false;
+          const [d, m, y] = row.date.split('/');
+          return parseInt(m) - 1 === currentMonth && parseInt(y) === currentYear;
+        });
+
+        if (filteredRows.length === 0) {
+          replyText = "📅 เดือนนี้ยังไม่มีวีรกรรมอะไรเลยนะไอน้อง! ไปทำงานซะ!!";
+        } else {
+          let summary = `📊 สรุปวีรกรรมเดือน ${now.toLocaleString('default', { month: 'long' })}:\n`;
+          filteredRows.forEach((row, index) => {
+            summary += `${index + 1}. [${row.date}] ${row.type}: ${row.subject}\n`;
+          });
+          replyText = summary;
+        }
+      } else {
+        replyText = "ไม่มีข้อมูลในระบบเลยว่ะ!";
+      }
+    } catch (e) { replyText = "ดึงข้อมูลไม่ได้โว้ย!!"; }
+  }
+
+  // --- 4. ตรวจสอบการบันทึก (ทั้งแบบพิมพ์ตรงและแบบกดปุ่ม) ---
+  else {
+    const match = userText.match(/^([^|#]+)(?:\|([^#]*))?(?:#(.+))?$/);
+    
     if (match) {
       const subject = match[1].trim();
       const description = match[2] ? match[2].trim() : "";
-      const now = new Date();
-      const today = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-      const finalDate = match[3] || today;
-      const isLeave = subject.includes('ลา');
-      const recordType = isLeave ? 'Leave' : 'Work';
+      
+      // กรณีที่ 1: กดปุ่มจาก Rich Menu มาแค่คำสั่ง (ไม่มีรายละเอียดต่อท้าย)
+      if (description === "" && (subject === "ลงงาน" || subject === "ลาป่วย" || subject === "ลากิจ")) {
+        const typeMap = { 'ลงงาน': 'Work', 'ลาป่วย': 'Leave', 'ลากิจ': 'Leave' };
+        userState[userId] = { type: typeMap[subject], label: subject };
+        replyText = `จะ ${subject} เรื่องอะไรล่ะ? พิมพ์ส่งมาเลย!!\n(หรือพิมพ์ 'ยกเลิก' เพื่อออก)`;
+      } 
+      // กรณีที่ 2: พิมพ์รูปแบบเดิม (มีรายละเอียดครบ)
+      else if (userText.includes('|')) {
+        const now = new Date();
+        const today = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+        const finalDate = match[3] ? match[3].trim() : today;
+        const isLeave = subject.includes('ลา');
+        const recordType = isLeave ? 'Leave' : 'Work';
 
-      try {
-        await axios.post(process.env.GOOGLE_SHEET_URL, { 
-          type: recordType, 
-          subject, 
-          description, 
-          date: finalDate 
-        });
-        replyText = `Oi! ไอน้อง!! พี่จด${isLeave ? 'การหนีเที่ยว' : 'งานถึกๆ'}ไว้ให้ละ!\n📌 เรื่อง: ${subject}\n📝 รายละเอียด: ${description || '-'}\n📅 วันที่: ${finalDate}\nจดไว้ในคัมภีร์เรียบร้อย! อย่าลืมไปทำล่ะเฟ้ย!!`;
-      } catch (e) {
-        replyText = "❌ บันทึกไม่ได้โว้ย!! จะหาเรื่องกันรึไง!?";
+        try {
+          await axios.post(process.env.GOOGLE_SHEET_URL, { 
+            type: recordType, subject, description, date: finalDate 
+          });
+          replyText = `Oi! ไอน้อง!! พี่จด${isLeave ? 'การหนี' : 'งาน'}ไว้ให้ละ!\\n📌 เรื่อง: ${subject}\\n📝 รายละเอียด: ${description || '-'}\\n📅 วันที่: ${finalDate}\\nจดเรียบร้อย! อย่าลืมไปทำล่ะเฟ้ย!!`;
+        } catch (e) { replyText = "❌ บันทึกไม่ได้โว้ย!!"; }
       }
-    } else {
-      replyText = "🤖 เห้ย!! พิมพ์ให้มันถูกหน่อยสิฟะ!\nรูปแบบ: หัวข้อ | รายละเอียด #วันที่\n\n💡 ตัวอย่างจัดหนัก:\nซัดกับหัวหน้า | ใช้ท่าไม้ตาย #15/04/2026";
     }
   }
 
-  return client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [{ type: 'text', text: replyText }]
-  });
+  if (replyText) {
+    return client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: replyText }]
+    });
+  }
 }
 
 app.post('/webhook', lineMiddleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent)).then((result) => res.json(result));
 });
 
-// --- สัญญาณแจ้งเตือนตอน Server ปิด/รีบูต --- [cite: 30, 31]
-process.on('SIGTERM', async () => { 
-  await notifySystemStatus('ขอไปงีบก่อน.. อย่ามากวนล่ะ!'); 
-  process.exit(0); 
-});
-process.on('SIGINT', async () => { 
-  await notifySystemStatus('ใครจะอยู่ก็อยู่.. ข้าไปล่ะ! ไกปูววว!!'); 
-  process.exit(0); 
-});
-
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-  notifySystemStatus('ออนไลน์แล้วโว้ยย!! ใครมีปัญหาอะไรก็เข้ามา!!');
+  // ปิด notifySystemStatus เพื่อความสะอาดของแชท
 });
